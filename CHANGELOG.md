@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.0.3
+- Added `AGENTS.md` (guidance for AI coding agents), shipped with the package
+- Added `files` field to package.json: tarball no longer includes `test/`, `eslint.config.js` and the example `config.json`
+
 ## 3.1.0
 
 ### New features
