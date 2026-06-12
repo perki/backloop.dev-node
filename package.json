@@ -43,6 +43,13 @@
     "backloop.dev-proxy": "bin/proxy.js",
     "backloop.dev-update": "bin/update.js"
   },
+  "files": [
+    "bin",
+    "src",
+    "certs",
+    "AGENTS.md",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "postinstall": "node bin/update.js",
     "test": "node --test test/*.test.js",
