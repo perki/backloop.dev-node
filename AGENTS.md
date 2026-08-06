@@ -7,7 +7,7 @@ Quick reference for AI agents using or modifying this package.
 HTTPS on localhost without self-signed certificates:
 
 - Any subdomain of `*.backloop.dev` resolves to `127.0.0.1` / `::1` (public DNS).
-- This package downloads a publicly shared, Let's Encrypt-signed wildcard certificate for `*.backloop.dev` and exposes it as ready-to-use `{ key, cert, ca }` options for `https.createServer()`.
+- This package downloads a publicly shared, publicly trusted wildcard certificate for `*.backloop.dev` and exposes it as ready-to-use `{ key, cert, ca }` options for `https.createServer()`.
 
 So `https://anything.backloop.dev:<port>/` reaches your local server with a valid certificate — no browser warnings, no mixed-content/CORS friction.
 
