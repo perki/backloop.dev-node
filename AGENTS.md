@@ -98,10 +98,14 @@ branch never has to touch a file `main` also touches. **Keep it that way.** The 
 the branch edits shared code it can conflict, and two versions of the same release start
 to diverge.
 
-To publish:
+The published tarball therefore differs from the tag of the same name by that one file.
+A `-npm` tag makes that explicit rather than leaving it to be discovered, so the artifact
+on the registry always has a git ref that describes it exactly:
 
 ```bash
 git checkout npm && git rebase main     # must never conflict
+npm test && npm run lint                # the suite runs on both branches
+git tag -f v<version>-npm && git push -f origin npm --tags
 npm publish
 git checkout main
 ```
