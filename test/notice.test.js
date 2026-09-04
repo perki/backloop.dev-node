@@ -1,5 +1,7 @@
 const { describe, it, beforeEach } = require('node:test');
 const assert = require('node:assert');
+const fs = require('fs');
+const path = require('path');
 const { readNotice, showDistributionWarning, resetNotice } = require('../src/notice');
 
 const NOW = Date.parse('2026-09-04T12:00:00.000Z');
@@ -61,17 +63,37 @@ describe('readNotice', () => {
 });
 
 describe('showDistributionWarning', () => {
-  it('says nothing and does not throw when the module is absent', () => {
-    // main carries only the hook. The module exists on the `npm` branch, so on
-    // a checkout — and in anything installed from git — absence is the norm.
+  // The whole point of the mechanism is that the same code behaves differently
+  // depending on whether one optional file is there. This suite therefore runs
+  // on both branches and asserts whichever half applies, rather than pinning
+  // the behaviour of the branch it happens to be on.
+  const modulePath = path.join(__dirname, '..', 'src', 'npm-distribution-warning.js');
+  const present = fs.existsSync(modulePath);
+
+  function capture (fn) {
     const said = [];
     const log = console.log;
     console.log = (...a) => said.push(a.join(' '));
-    try {
-      assert.doesNotThrow(() => showDistributionWarning());
+    try { fn(); } finally { console.log = log; }
+    return said;
+  }
+
+  it('never throws, whether the module is there or not', () => {
+    assert.doesNotThrow(() => showDistributionWarning());
+  });
+
+  it(present ? 'speaks when the module is present' : 'stays silent when the module is absent', () => {
+    const said = capture(showDistributionWarning);
+    if (present) {
+      assert.ok(said.length > 0, 'expected the published build to say something');
+      assert.match(said.join('\n'), /npm/);
+    } else {
       assert.deepStrictEqual(said, []);
-    } finally {
-      console.log = log;
     }
+  });
+
+  it('says it at most once per process', () => {
+    showDistributionWarning();
+    assert.deepStrictEqual(capture(showDistributionWarning), []);
   });
 });
