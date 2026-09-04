@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.2.0
+
+- A published build can now say how it was obtained. `src/notice.js` optionally loads
+  `./npm-distribution-warning` and calls its `show()`; the module is absent from this
+  repository, so a copy installed from git says nothing at all.
+
+  It exists on the `npm` branch, which is what gets published to the registry, and
+  carries the notice that the package is no longer updated there. Keeping the text in a
+  file of its own means that branch only ever *adds* a file: it rebases onto `main`
+  without ever conflicting, and the two cannot drift apart.
+
 ## 4.1.0
 
 - **`pack.json` can now carry a `notice`**, shown once at start-up. It is how whoever

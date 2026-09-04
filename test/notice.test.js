@@ -1,6 +1,6 @@
 const { describe, it, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { readNotice, resetNotice } = require('../src/notice');
+const { readNotice, showDistributionWarning, resetNotice } = require('../src/notice');
 
 const NOW = Date.parse('2026-09-04T12:00:00.000Z');
 
@@ -57,5 +57,21 @@ describe('readNotice', () => {
   it('never looks at version.message, which is a different and fatal channel', () => {
     const pack = { version: { num: '1', message: 'incompatible' } };
     assert.strictEqual(readNotice(pack, NOW), null);
+  });
+});
+
+describe('showDistributionWarning', () => {
+  it('says nothing and does not throw when the module is absent', () => {
+    // main carries only the hook. The module exists on the `npm` branch, so on
+    // a checkout — and in anything installed from git — absence is the norm.
+    const said = [];
+    const log = console.log;
+    console.log = (...a) => said.push(a.join(' '));
+    try {
+      assert.doesNotThrow(() => showDistributionWarning());
+      assert.deepStrictEqual(said, []);
+    } finally {
+      console.log = log;
+    }
   });
 });

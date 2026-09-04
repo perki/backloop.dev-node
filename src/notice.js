@@ -41,6 +41,41 @@ function readNotice (pack, now = Date.now()) {
   return message.trim();
 }
 
+/**
+ * A build published to npm carries an extra module saying so; the repository
+ * does not, and neither does a copy installed from git. Its absence is the
+ * normal case, which is why this resolves to null instead of throwing.
+ *
+ * Keeping the hook here and the text in a file of its own means the npm branch
+ * only ever *adds* a file — it can be rebased onto main forever without a
+ * conflict, and the two cannot drift apart.
+ */
+function loadDistributionWarning () {
+  try {
+    return require('./npm-distribution-warning');
+  } catch (e) {
+    return null;
+  }
+}
+
+let distributionWarningShown = false;
+
+/**
+ * Says, once, whatever the published build wants said about how it was
+ * obtained. Nothing at all when the module is absent.
+ */
+function showDistributionWarning () {
+  if (distributionWarningShown) return;
+  const mod = loadDistributionWarning();
+  if (mod == null || typeof mod.show !== 'function') return;
+  distributionWarningShown = true;
+  try {
+    mod.show();
+  } catch (e) {
+    // Saying something must never be a reason to stop a dev server.
+  }
+}
+
 // Showing the same thing twice in one process is noise; showing a *different*
 // one — the freshly downloaded pack superseding the cached copy — is not.
 let lastShown = null;
@@ -68,6 +103,7 @@ function showNotice (pack) {
 /** Tests need to forget what has already been shown. */
 function resetNotice () {
   lastShown = null;
+  distributionWarningShown = false;
 }
 
-module.exports = { readNotice, showNotice, resetNotice };
+module.exports = { readNotice, showNotice, showDistributionWarning, resetNotice };

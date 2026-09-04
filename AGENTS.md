@@ -86,6 +86,26 @@ seen and `npm install` would hang.
 `BACKLOOP_DEV_CERTS_DIR` pointed at a directory that already holds a valid `pack.json`
 skips the download entirely, and needs no secret. This is the offline/sandboxed path.
 
+## The npm branch
+
+`main` is what the repository is. The `npm` branch is `main` plus exactly one file,
+`src/npm-distribution-warning.js`, and it is what gets published to the registry — so a
+copy installed from npm says it is no longer updated there, and a copy installed from
+git says nothing.
+
+`src/notice.js` loads that module optionally and ignores its absence, which is why the
+branch never has to touch a file `main` also touches. **Keep it that way.** The moment
+the branch edits shared code it can conflict, and two versions of the same release start
+to diverge.
+
+To publish:
+
+```bash
+git checkout npm && git rebase main     # must never conflict
+npm publish
+git checkout main
+```
+
 ## Notices
 
 `src/notice.js` reads an optional `notice` field from `pack.json` and prints it once per
