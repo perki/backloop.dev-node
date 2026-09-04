@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.2.1
+
+- Only one distribution warning per process. A Vite project loads both this package and
+  the plugin, and each said the same thing in turn — sixteen lines, when the plugin's
+  message already names both dependencies to change. Whichever speaks first sets
+  `Symbol.for('backloop.dev.distributionWarningShown')` on `globalThis`; the other stays
+  quiet. A symbol rather than an environment variable, so it neither pollutes the
+  environment nor silences a child process that has its own story to tell.
+
 ## 4.2.0
 
 - A published build can now say how it was obtained. `src/notice.js` optionally loads

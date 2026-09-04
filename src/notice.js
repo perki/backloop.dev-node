@@ -58,17 +58,27 @@ function loadDistributionWarning () {
   }
 }
 
-let distributionWarningShown = false;
+/**
+ * One distribution warning per process, whichever package gets there first.
+ *
+ * A Vite project loads two of these — the plugin and this package — and both
+ * would otherwise say the same thing back to back, sixteen lines of it, when
+ * the plugin's message already names both dependencies to change. The flag is a
+ * well-known symbol rather than an environment variable so it neither pollutes
+ * the environment nor silences child processes that have their own story.
+ */
+const WARNED = Symbol.for('backloop.dev.distributionWarningShown');
 
 /**
  * Says, once, whatever the published build wants said about how it was
- * obtained. Nothing at all when the module is absent.
+ * obtained. Nothing at all when the module is absent, and nothing when
+ * something else has already spoken.
  */
 function showDistributionWarning () {
-  if (distributionWarningShown) return;
+  if (globalThis[WARNED]) return;
   const mod = loadDistributionWarning();
   if (mod == null || typeof mod.show !== 'function') return;
-  distributionWarningShown = true;
+  globalThis[WARNED] = true;
   try {
     mod.show();
   } catch (e) {
@@ -103,7 +113,7 @@ function showNotice (pack) {
 /** Tests need to forget what has already been shown. */
 function resetNotice () {
   lastShown = null;
-  distributionWarningShown = false;
+  delete globalThis[WARNED];
 }
 
-module.exports = { readNotice, showNotice, showDistributionWarning, resetNotice };
+module.exports = { readNotice, showNotice, showDistributionWarning, resetNotice, WARNED };

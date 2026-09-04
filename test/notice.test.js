@@ -2,7 +2,7 @@ const { describe, it, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { readNotice, showDistributionWarning, resetNotice } = require('../src/notice');
+const { readNotice, showDistributionWarning, resetNotice, WARNED } = require('../src/notice');
 
 const NOW = Date.parse('2026-09-04T12:00:00.000Z');
 
@@ -95,5 +95,16 @@ describe('showDistributionWarning', () => {
   it('says it at most once per process', () => {
     showDistributionWarning();
     assert.deepStrictEqual(capture(showDistributionWarning), []);
+  });
+
+  it('stays quiet when another package has already said it', () => {
+    // A Vite project loads the plugin and this package; the plugin speaks first
+    // and its message already names both dependencies.
+    globalThis[WARNED] = true;
+    try {
+      assert.deepStrictEqual(capture(showDistributionWarning), []);
+    } finally {
+      delete globalThis[WARNED];
+    }
   });
 });

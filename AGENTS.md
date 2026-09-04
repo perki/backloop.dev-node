@@ -94,7 +94,13 @@ copy installed from npm says it is no longer updated there, and a copy installed
 git says nothing.
 
 `src/notice.js` loads that module optionally and ignores its absence, which is why the
-branch never has to touch a file `main` also touches. **Keep it that way.** The moment
+branch never has to touch a file `main` also touches. **Keep it that way.**
+
+Only one warning is shown per process: whichever package speaks first sets
+`Symbol.for('backloop.dev.distributionWarningShown')` on `globalThis`, and the other
+falls silent. That is a contract with `vite-plugin-backloop.dev`, which loads this
+package and would otherwise double the message — change the symbol name in one and you
+must change it in both. The moment
 the branch edits shared code it can conflict, and two versions of the same release start
 to diverge.
 
