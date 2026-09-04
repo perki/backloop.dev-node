@@ -94,3 +94,20 @@ export function httpsOptionsAsync(options: BackloopOptions, done: HttpsOptionsCa
  * ```
  */
 export function httpsOptionsPromise(options?: BackloopOptions): Promise<HttpsOptions>;
+
+/**
+ * Default export, for `import backloop from 'backloop.dev'`. It holds the same
+ * three functions as the named exports and, unlike before version 5, resolves
+ * nothing when the module is imported.
+ *
+ * Reading `key`, `cert` or `ca` on it throws: that is what version 4 code did
+ * when it passed the default export straight to `https.createServer`, and a
+ * thrown explanation beats a server started with no certificate.
+ */
+declare const backloop: {
+  httpsOptions: typeof httpsOptions;
+  httpsOptionsAsync: typeof httpsOptionsAsync;
+  httpsOptionsPromise: typeof httpsOptionsPromise;
+};
+
+export default backloop;

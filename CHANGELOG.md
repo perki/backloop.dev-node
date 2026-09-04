@@ -1,5 +1,33 @@
 # Changelog
 
+## 5.0.0
+
+**Breaking: importing the ESM entry no longer resolves the certificate.**
+
+```js
+// before
+import httpsOptions from 'backloop.dev';
+
+// now
+import { httpsOptionsPromise } from 'backloop.dev';
+const httpsOptions = await httpsOptionsPromise();
+```
+
+`src/index.mjs` awaited the certificate at the top level and exported the result, so the
+module fetched over the network merely by being imported. Three consequences, all of them
+bad: a production build downloaded a certificate it had no use for; a `vite.config.js`
+importing it could not be loaded at all, because Node refuses `require()` on a graph
+containing a top-level await (`ERR_REQUIRE_ASYNC_MODULE`) — which broke every `vite build`
+using the plugin; and there was no way to say "not now".
+
+It now exports the three functions, like the CommonJS entry, and nothing happens until
+one is called. The default export holds the same three, so `import backloop from
+'backloop.dev'` mirrors `require('backloop.dev')`.
+
+Version 4 code that passes the default export straight to `https.createServer` throws an
+explanation naming the replacement, rather than starting a server with no certificate and
+failing somewhere far from the cause.
+
 ## 4.2.1
 
 - Only one distribution warning per process. A Vite project loads both this package and

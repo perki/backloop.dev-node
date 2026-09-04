@@ -43,9 +43,19 @@ certificate — no browser warnings, no mixed-content/CORS friction.
 ## API (CommonJS and ESM)
 
 ```js
-import httpsOptions from 'backloop.dev';                  // ESM default: sync, see caveat below
+import { httpsOptionsPromise } from 'backloop.dev';       // ESM, since 5.0.0
 const { httpsOptions, httpsOptionsAsync, httpsOptionsPromise } = require('backloop.dev');
 ```
+
+**Importing resolves nothing.** Before 5.0.0 the ESM entry awaited the certificate at the
+top level and exported the result, so the module fetched over the network merely by being
+imported — which made a production build download a certificate it had no use for, and
+made the module unloadable from a `vite.config.js`, since Node refuses `require()` on a
+graph containing a top-level await. Keep `src/index.mjs` free of top-level `await`.
+
+Reading `key`, `cert` or `ca` on the default export throws a migration message: that is
+exactly what version 4 code did when it handed the default export to
+`https.createServer`, and an explanation beats a server started with no certificate.
 
 - `httpsOptionsPromise(options?): Promise<{key, cert, ca}>` — **preferred**; refreshes the certificate if needed.
 - `httpsOptionsAsync(options?, cb)` — callback flavor of the same; `httpsOptionsAsync(cb)` still works.

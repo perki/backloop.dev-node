@@ -234,15 +234,23 @@ does not work — you asked for it deliberately, so a silent success would be a 
 ### ES6 Module
 
 ```js
-import httpsOptions from 'backloop.dev';
+import { httpsOptionsPromise } from 'backloop.dev';
 import https from 'https';
+
+const httpsOptions = await httpsOptionsPromise();
 
 https.createServer(httpsOptions, (req, res) => {
   res.writeHead(200);
   res.end('hello world\n');
 }).listen(8443);
-
 ```
+
+Before version 5 the default export *was* the resolved options, so importing the module
+fetched the certificate. That made it unusable from a config file — Node refuses
+`require()` on a graph containing a top-level await — and made a production build
+download a certificate it had no use for. Importing now does nothing until you call
+something. Code written for version 4 fails with an explanation rather than starting a
+server with no certificate.
 
 ### CommonJS
 
@@ -333,17 +341,21 @@ File: `vite.config.js`
 
 ```js
 import { defineConfig } from 'vite';
-import backloopHttpsOptions from 'backloop.dev';
+import { httpsOptionsPromise } from 'backloop.dev';
 
-export default defineConfig({
+export default defineConfig(async () => ({
   server: {
     port: 4443,
     host: 'whatever.backloop.dev',
-    https: backloopHttpsOptions
+    https: await httpsOptionsPromise()
   },
   // ... //
-});
+}));
 ```
+
+Note the async config factory: resolving the certificate at the top level of
+`vite.config.js` would put a top-level await in a graph Vite loads with `require()`,
+which Node refuses.
 
 Now `npm run dev` will be served on `https://whatever.backloop.dev`
 There is also a ViteJS plugin that does the same: [vite-plugin-backloop.dev](https://github.com/perki/backloop.dev-vite).
