@@ -348,6 +348,21 @@ export default defineConfig({
 Now `npm run dev` will be served on `https://whatever.backloop.dev`
 There is also a ViteJS plugin that does the same: [vite-plugin-backloop.dev](https://github.com/perki/backloop.dev-vite).
 
+## Notices
+
+`pack.json` may carry a `notice`, which the package prints once at start-up:
+
+```
+  ┌ backloop.dev
+  │ The secret changes on 15 January 2027.
+  │ Ask for the new one before then, or downloads will start failing.
+  └
+```
+
+That is the only way whoever publishes the certificate can tell you something — most
+likely that the secret is about to rotate. It is informational: nothing fails, nothing
+exits, and it disappears on its own once the date it announced has passed.
+
 ## Security
 
 What if `*.backloop.dev` DNS A and AAAA entries are not pointing to `127.0.0.1` and `::1` but to another IP (malicious ones)?

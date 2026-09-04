@@ -86,6 +86,24 @@ seen and `npm install` would hang.
 `BACKLOOP_DEV_CERTS_DIR` pointed at a directory that already holds a valid `pack.json`
 skips the download entirely, and needs no secret. This is the offline/sandboxed path.
 
+## Notices
+
+`src/notice.js` reads an optional `notice` field from `pack.json` and prints it once per
+process at start-up. It is the only channel from the certificate publisher to installed
+copies — a secret rotation with a date, in practice.
+
+- Accepts `"notice": "text"` or `{ message, until }`; `until` in the past means silence.
+- Never throws, never exits, never writes to stderr. **Keep it that way.** Announcing
+  something must not be a reason to stop someone's dev server.
+- It is not `pack.json`'s `version.message`, which fires only when `version.num` exceeds
+  the package's hardcoded `versionNum` and then calls `process.exit(1)`. That one is an
+  incompatibility signal, not a message channel — do not repurpose it.
+- Shown from `updateAndLoad` (cached and freshly downloaded packs) and from the sync
+  `httpsOptions()`. A second, *different* notice in the same process does print; the same
+  one twice does not.
+- Only installations on 4.1.0 or later can show it. Older ones ignore the field safely,
+  but publishing a notice does not reach them.
+
 ## CLI (npx or global install)
 
 ```bash

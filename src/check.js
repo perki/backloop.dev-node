@@ -9,6 +9,7 @@ const {
   resolveSecret, packUrl, certsPath, savedSecretPath, canPrompt, promptForSecret, saveSecret,
   SECRET_PATTERN, MissingSecretError, ASK_THE_ADMIN
 } = require('./secret');
+const { showNotice } = require('./notice');
 
 const versionNum = 1;
 
@@ -43,6 +44,7 @@ async function updateAndLoad (force = false, { secret, interactive = false } = {
 
   if (!force) {
     if (actual != null && actual.expirationDays > 0) {
+      showNotice(actual);
       return actual;
     }
   } else {
@@ -65,6 +67,7 @@ async function updateAndLoad (force = false, { secret, interactive = false } = {
   fs.writeFileSync(path.resolve(certsPath, 'backloop.dev-key.part2.pem'), res.key2);
   fs.writeFileSync(path.resolve(certsPath, 'pack.json'), JSON.stringify(res, null, 2));
 
+  showNotice(res);
   console.log('Updated backloop.dev certificate, expires in ' + expDays + ' days');
   console.log(`Using ${certsPath} to store certificates files.`);
   res.expirationDays = expDays;

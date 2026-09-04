@@ -1,5 +1,29 @@
 # Changelog
 
+## 4.1.0
+
+- **`pack.json` can now carry a `notice`**, shown once at start-up. It is how whoever
+  publishes the certificate tells whoever installed the package something — that the
+  secret rotates on a given date, most likely. Either shape works, since the field is
+  edited by hand:
+
+  ```json
+  "notice": "The secret changes on 2027-01-15."
+  "notice": { "message": "…", "until": "2027-01-20T00:00:00.000Z" }
+  ```
+
+  Past `until`, it goes quiet: a pack sits on disk until the certificate nears expiry, so
+  without that a notice would nag for months about a date already gone. An unparseable
+  `until` shows the message anyway — a typo in a date must not silence an announcement.
+
+  This is deliberately **not** `version.message`, which only prints when the pack format
+  is newer than the package can read and which then calls `process.exit(1)`. Announcing
+  something must never be a reason to stop someone's dev server, so nothing in this path
+  throws or exits.
+
+  Older versions ignore the field, so publishing one is safe — but they also cannot show
+  it. A notice only reaches installations on 4.1.0 or later.
+
 ## 4.0.0
 
 **Breaking: a secret is now required to download the certificate.**

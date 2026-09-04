@@ -3,6 +3,7 @@
  * [BSD-3-Clause](https://github.com/perki/backloop.dev/blob/main/LICENSE)
  */
 const check = require('./check');
+const { showNotice } = require('./notice');
 
 function httpsOptions () {
   const actual = check.loadFromLocalDirectory('=> run `./bin/update` to `backloop.dev-update` to update');
@@ -19,6 +20,7 @@ function httpsOptions () {
     });
     return { key: '', cert: '', ca: '' };
   }
+  showNotice(actual);
   return {
     key: actual.key1 + actual.key2,
     cert: actual.cert,
