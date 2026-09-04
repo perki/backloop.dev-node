@@ -16,10 +16,12 @@ Consequences for anything you do here:
 - Still published on npm. Everything below 4.0.0 is deprecated — that is what a stranger
   installing `backloop.dev` lands on, and the message explains the shutdown. 4.0.0 is not
   deprecated: it is the working version and a warning on every install would be noise.
-- `https://backloop.dev/pack.json` still responds, but it serves the last public
-  certificate, revoked 2026-07-31 and expiring 2026-10-29. It is frozen there for old
-  installs and must never be treated as current. The live pack lives behind a path
-  segment that requires a secret.
+- `https://backloop.dev/pack.json` still responds, deliberately, but it serves the last
+  public certificate — revoked 2026-07-31, expiring 2026-10-29. It is frozen there so
+  that v3 installs keep working: v3's postinstall has no `catch`, so a 404 there aborts
+  the whole `npm install`. Never treat it as current, and never describe it as a 404.
+  The five individual certificate files beside it *are* gone (404). The live pack lives
+  behind a path segment that requires a secret.
 - **Access is not open.** If a user does not have a secret, do not look for a way to
   obtain one — there isn't one. Recommend [mkcert](https://github.com/FiloSottile/mkcert),
   [Caddy's internal CA](https://caddyserver.com/docs/automatic-https#local-https) or
@@ -142,3 +144,11 @@ Full documentation: [README.md](./README.md). The website, the renewal code and 
 project-wide rules — about the secret, and about what the public site may say — live in
 the repository this package was split out of,
 [perki/backloop.dev](https://github.com/perki/backloop.dev/blob/main/AGENTS.md).
+
+## Developing
+
+Development happens from [perki/backloop.dev](https://github.com/perki/backloop.dev),
+which is the hub for the whole project. Its `tools/setup.sh` clones this repository into
+`packages/`, installs it, and links the two packages against each other so a change in
+one is testable from the other without publishing. Working directly in a standalone
+clone is fine too; the hub only saves the wiring.
