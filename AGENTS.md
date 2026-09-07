@@ -108,9 +108,26 @@ which is the whole point: the package is useful to a stranger again.
 | | Source | Module |
 |---|---|---|
 | 1 | A certificate the user supplied | `src/localcert.js` |
-| 2 | A pack already cached in `certsPath` | `src/check.js` |
+| 2 | A pack already cached for the current source | `src/check.js` |
 | 3 | A download from the secret path | `src/check.js` |
 | 4 | The public self-signed certificate | `src/check.js` |
+
+### The cache is split by source
+
+`certsPath/public/` and `certsPath/private/` hold downloaded packs; `certsPath/pack.json`
+is a pack the user supplied and is read but never written.
+
+They were one shared `pack.json` until 5.2.0, and that was a bug: after running with no
+secret, configuring one changed nothing, because the cached public pack was still
+unexpired and was returned before anything asked which source the configuration now
+pointed at. `currentSource()` decides the directory, so the two can no longer be confused
+and neither can overwrite the other.
+
+The one judgement call is `readSuppliedPack()`. A top-level `pack.json` is either a pack
+the user placed on purpose, which must keep working offline, or a cache left by 5.1.0 or
+earlier. They are indistinguishable, so the rule is the one that cannot serve the wrong
+certificate: a `public` pack there is ignored once a secret is configured, and everything
+else is honoured.
 
 **A configured secret that fails must never fall back.** Only `MissingSecretError`, which
 means nothing is configured anywhere, reaches `fetchPublicPack()`. A malformed secret or a

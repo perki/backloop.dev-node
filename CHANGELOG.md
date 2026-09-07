@@ -1,5 +1,24 @@
 # Changelog
 
+## 5.2.0
+
+**Fixes serving the wrong certificate after a secret is configured.** Running with no
+secret cached the public certificate in `certs/pack.json`. Configuring a secret
+afterwards changed nothing: the cache was still valid and still unexpired, so it was
+returned before anything considered whether it came from the source now being asked for.
+Somebody who had just been given access went on being served the shared certificate, with
+nothing to indicate why.
+
+Downloaded packs are now cached per source, in `certs/public/` and `certs/private/`, so
+the two can neither be confused nor overwrite each other. Switching between them is
+resolved from disk rather than the network.
+
+A `pack.json` placed directly in the certificates directory is still read and still never
+written, because that is the documented way to run offline. One exception, which is the
+migration path from 5.1.0 and earlier: a pack there marked `public` is ignored once a
+secret is configured. A user who has just been given a secret means to use it, and the
+two cases are indistinguishable on disk.
+
 ## 5.1.0
 
 **The package works again without a secret.** Two new sources of certificate, both of

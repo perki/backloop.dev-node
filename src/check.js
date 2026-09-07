@@ -23,7 +23,46 @@ if (!fs.existsSync(certsPath)) {
   process.exit(1);
 }
 
-const packPath = path.resolve(certsPath, 'pack.json');
+/**
+ * A pack the user put there themselves. It is read but never written, which is
+ * the documented offline path: point BACKLOOP_DEV_CERTS_DIR at a directory
+ * holding a valid pack.json and nothing is downloaded.
+ */
+const suppliedPackPath = path.resolve(certsPath, 'pack.json');
+
+/**
+ * Downloaded packs are cached per source, never in one shared file.
+ *
+ * Sharing one pack.json meant that configuring a secret after running on the
+ * public certificate kept serving the public one: the cache was still valid, so
+ * nothing looked wrong and nothing went and fetched the certificate the user
+ * had just been given access to. Keeping them apart makes that structurally
+ * impossible, and means neither can overwrite the other.
+ *
+ * @param {'public'|'private'} source
+ */
+function cacheDir (source) {
+  return path.resolve(certsPath, source);
+}
+
+/**
+ * Which certificate the current configuration asks for. An explicit secret or
+ * any configured one means the private path; nothing configured means the
+ * public certificate. A malformed secret is neither: it is a mistake, and it
+ * propagates so the user is told rather than quietly served something else.
+ *
+ * @param {string} [explicit]
+ * @returns {'public'|'private'}
+ */
+function currentSource (explicit) {
+  try {
+    resolveSecret(explicit);
+    return 'private';
+  } catch (err) {
+    if (err instanceof MissingSecretError) return 'public';
+    throw err;
+  }
+}
 
 /**
  * @param {boolean} [force] - download even when the local certificate is still valid
@@ -48,7 +87,8 @@ async function updateAndLoad (force = false, { secret, interactive = false, cert
     return local;
   }
 
-  const actual = loadFromLocalDirectory(' Auto updating ');
+  const source = currentSource(secret);
+  const actual = loadFromLocalDirectory(' Auto updating ', source);
 
   if (actual?.version?.num != null) {
     if (actual.version.num > versionNum) {
@@ -76,13 +116,15 @@ async function updateAndLoad (force = false, { secret, interactive = false, cert
     return actual;
   }
 
-  fs.writeFileSync(path.resolve(certsPath, 'backloop.dev-bundle.crt'), res.cert + '\n' + res.ca);
-  fs.writeFileSync(path.resolve(certsPath, 'backloop.dev-ca.crt'), res.ca);
-  fs.writeFileSync(path.resolve(certsPath, 'backloop.dev-cert.crt'), res.cert);
-  fs.writeFileSync(path.resolve(certsPath, 'README.md'), 'concatenate keys file in backloop.dev-key.pem to use');
-  fs.writeFileSync(path.resolve(certsPath, 'backloop.dev-key.part1.pem'), res.key1);
-  fs.writeFileSync(path.resolve(certsPath, 'backloop.dev-key.part2.pem'), res.key2);
-  fs.writeFileSync(path.resolve(certsPath, 'pack.json'), JSON.stringify(res, null, 2));
+  const dir = cacheDir(source);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.resolve(dir, 'backloop.dev-bundle.crt'), res.cert + '\n' + res.ca);
+  fs.writeFileSync(path.resolve(dir, 'backloop.dev-ca.crt'), res.ca);
+  fs.writeFileSync(path.resolve(dir, 'backloop.dev-cert.crt'), res.cert);
+  fs.writeFileSync(path.resolve(dir, 'README.md'), 'concatenate keys file in backloop.dev-key.pem to use');
+  fs.writeFileSync(path.resolve(dir, 'backloop.dev-key.part1.pem'), res.key1);
+  fs.writeFileSync(path.resolve(dir, 'backloop.dev-key.part2.pem'), res.key2);
+  fs.writeFileSync(path.resolve(dir, 'pack.json'), JSON.stringify(res, null, 2));
 
   showDistributionWarning();
   showPublicWarning(res);
@@ -184,12 +226,14 @@ function get (url, what, notFound) {
   });
 }
 
-function loadFromLocalDirectory (msgOnNeedUpdate) {
-  if (!fs.existsSync(packPath)) {
+function loadFromLocalDirectory (msgOnNeedUpdate, source = currentSource()) {
+  const found = readPackFrom(path.resolve(cacheDir(source), 'pack.json')) ??
+                readSuppliedPack(source);
+  if (found == null) {
     console.log('backloop.dev certificate not present. ' + msgOnNeedUpdate);
     return null;
   }
-  const actual = JSON.parse(fs.readFileSync(packPath, 'utf-8'));
+  const actual = found;
   actual.expirationDays = expirationDays(actual.info.notAfter);
   if (actual.expirationDays < 0) {
     console.log('backloop.dev certificate expired since ' + (-1 * actual.expirationDays) + ' days. ' + msgOnNeedUpdate);
@@ -197,6 +241,46 @@ function loadFromLocalDirectory (msgOnNeedUpdate) {
     console.log('backloop.dev certificate OK, expires in ' + actual.expirationDays + ' days');
   }
   return actual;
+}
+
+/**
+ * @param {string} file
+ * @returns {object|null} the parsed pack, or null when it is absent or unreadable
+ */
+function readPackFrom (file) {
+  if (!fs.existsSync(file)) return null;
+  try {
+    const pack = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    return pack?.info?.notAfter != null ? pack : null;
+  } catch (e) {
+    console.error(`backloop.dev: ignoring ${file}: ${e.message}`);
+    return null;
+  }
+}
+
+/**
+ * The pack sitting directly in the certificates directory.
+ *
+ * Two different things end up there. One is a pack the user placed on purpose,
+ * which is the documented way to run offline and must keep working. The other
+ * is a cache written by an older version of this package, before caches were
+ * split per source. They are indistinguishable on disk, so the only safe rule
+ * is the one that cannot serve the wrong certificate: a public pack is ignored
+ * once a secret is configured, since a user who has just been given a secret
+ * means to use it. Everything else is honoured.
+ *
+ * @param {'public'|'private'} source
+ * @returns {object|null}
+ */
+function readSuppliedPack (source) {
+  const pack = readPackFrom(suppliedPackPath);
+  if (pack == null) return null;
+  if (pack.public === true && source === 'private') {
+    console.log('backloop.dev: a secret is configured, so the public certificate in ' +
+      `${certsPath} is being replaced`);
+    return null;
+  }
+  return pack;
 }
 
 /**

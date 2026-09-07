@@ -73,6 +73,18 @@ Downloads happen at installation (postinstall) and at runtime when close to expi
 manually with `backloop.dev-update`. A certificate you supplied is never downloaded over
 and never refreshed: it is yours, and replacing it is your business.
 
+Downloaded certificates are cached per source, so the public one and one fetched with a
+secret never share a file:
+
+```
+<certs dir>/public/pack.json     the shared self-signed certificate
+<certs dir>/private/pack.json    downloaded with your secret
+<certs dir>/pack.json            a pack you put there yourself, read but never written
+```
+
+Configuring a secret after having run without one therefore switches immediately, and
+switching back does not download anything again.
+
 A configured secret that fails is an error and never falls back to the public
 certificate. Silently serving something other than what you asked for would send you
 debugging the wrong thing.
@@ -191,8 +203,9 @@ certificate if Firefox is your development browser.
 ### Skipping the download entirely
 
 If you already hold the certificate files, point `BACKLOOP_DEV_CERTS_DIR` at a
-directory containing a valid `pack.json` and no secret is needed at all. This is also
-how to install in an offline or sandboxed environment:
+directory containing a valid `pack.json` and no secret is needed at all. That file is
+read and never written. This is also how to install in an offline or sandboxed
+environment:
 
 ```bash
 npm install --ignore-scripts backloop.dev
