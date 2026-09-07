@@ -19,16 +19,19 @@ Any subdomain of `*.backloop.dev` points to `localhost`!
 > nine hours, then Sectigo within about two days. <https://backloop.dev> tells the whole
 > story.
 >
-> The project continues as a private setup used by its author. The package still works,
-> but the certificate now lives behind a path you need a secret to reach, and **access
-> is not open** — there is no way to request a secret.
+> **The package still works, and it still works for you.** What no longer exists is a
+> certificate that browsers trust with nothing installed. There are three ways to get one
+> now, and the first two need no secret:
 >
-> **If you came here for HTTPS on localhost**, use a local certificate authority
-> instead: [mkcert](https://github.com/FiloSottile/mkcert),
-> [Caddy's internal CA](https://caddyserver.com/docs/automatic-https#local-https), or
-> [vite-plugin-mkcert](https://github.com/liuweiGL/vite-plugin-mkcert). All of them
-> install a root certificate into your trust store, which is the trade-off backloop.dev
-> existed to avoid — and the only trade-off a public authority is not obliged to break.
+> 1. [**Bring your own certificate**](#bringing-your-own-certificate), from
+>    [mkcert](https://github.com/FiloSottile/mkcert), Caddy, your company CA or plain
+>    openssl. Nothing is downloaded, nobody else holds the key, and this is the right
+>    answer whenever you can manage it.
+> 2. [**Use the public certificate**](#the-public-certificate), which is shared,
+>    self-signed, and installed once per machine from
+>    <https://backloop.dev/public/>. No toolchain required.
+> 3. **A secret**, for the private setup this project became. **Access is not open** and
+>    there is no way to request one.
 
 ## Why it exists
 
@@ -54,13 +57,25 @@ Add `-g`, or use `npx`, for the `backloop.dev`, `backloop.dev-proxy` and
 
 ## Where are the certificates?
 
-Certificates are not bundled with the package. They are downloaded at installation
-(postinstall) and refreshed at runtime when close to expiry, or manually with
-`backloop.dev-update`. `BACKLOOP_DEV_CERTS_DIR` chooses where they are stored; the
-directory must already exist.
+Certificates are not bundled with the package. `BACKLOOP_DEV_CERTS_DIR` chooses where
+they are stored; the directory must already exist.
 
-They are no longer published at a public URL. Downloading them needs a secret, which
-becomes a path segment on the download URL.
+The first of these that applies wins:
+
+| | Source | Needs |
+|---|---|---|
+| 1 | A certificate you supplied ([below](#bringing-your-own-certificate)) | nothing |
+| 2 | A pack already in the certificates directory | nothing |
+| 3 | A download from the secret path | a secret |
+| 4 | The [public certificate](#the-public-certificate) | nothing |
+
+Downloads happen at installation (postinstall) and at runtime when close to expiry, or
+manually with `backloop.dev-update`. A certificate you supplied is never downloaded over
+and never refreshed: it is yours, and replacing it is your business.
+
+A configured secret that fails is an error and never falls back to the public
+certificate. Silently serving something other than what you asked for would send you
+debugging the wrong thing.
 
 `https://backloop.dev/pack.json` does still answer, but only with the last public
 certificate — revoked on 2026-07-31, expiring 2026-10-29, never renewed. It is left
@@ -122,6 +137,56 @@ practice you will not see it (`npm install --foreground-scripts` shows it). The 
 you actually find out is the first start, where you get the prompt above or, if nothing
 is watching, a clear error. That is deliberate: a missing certificate can be fixed later,
 a broken `npm install` cannot.
+
+### Bringing your own certificate
+
+Any certificate and key in PEM will do. The package reads them, checks that they belong
+together, and never touches the network:
+
+```bash
+export BACKLOOP_DEV_CERT=/path/to/cert.pem
+export BACKLOOP_DEV_KEY=/path/to/key.pem
+export BACKLOOP_DEV_CA=/path/to/chain.pem   # optional
+```
+
+Four ways to configure it, first match wins:
+
+| | How |
+|---|---|
+| 1 | `httpsOptionsPromise({ cert, key, ca })`, paths, for programmatic use |
+| 2 | `BACKLOOP_DEV_CERT`, `BACKLOOP_DEV_KEY`, `BACKLOOP_DEV_CA` |
+| 3 | `backloop.dev.json` in the project, or `~/.backloop.dev.json`, as `{ "cert": "...", "key": "..." }`. Relative paths are resolved against the file itself, not the working directory |
+| 4 | `cert.pem` + `key.pem`, or `fullchain.pem` + `privkey.pem`, sitting in `BACKLOOP_DEV_CERTS_DIR` |
+
+With [mkcert](https://github.com/FiloSottile/mkcert), which issues from a local authority
+that only your machine trusts:
+
+```bash
+mkcert -install
+mkcert '*.backloop.dev' backloop.dev
+export BACKLOOP_DEV_CERT=$PWD/_wildcard.backloop.dev+1.pem
+export BACKLOOP_DEV_KEY=$PWD/_wildcard.backloop.dev+1-key.pem
+```
+
+Setting only one of cert and key is an error rather than a silent skip, and so is a key
+that does not match its certificate. Both are reported by name, because the alternative
+is a TLS handshake failing somewhere far from the cause.
+
+### The public certificate
+
+With no secret and no certificate of your own, the package downloads the shared
+self-signed certificate from <https://backloop.dev/public/> and says so at start-up.
+
+It is self-signed, so nothing can revoke it, which is exactly why it exists. It is also
+shared, and its private key is published with it, so **your browser rejects it until you
+install it once on your machine**. <https://backloop.dev/public/> has the instructions
+for macOS, Windows and Linux, and is honest about what installing it means.
+
+It is a leaf certificate and deliberately not a certificate authority, so it can never be
+used to sign any hostname other than `*.backloop.dev`.
+
+Firefox does not use the system trust store and will not accept it, so bring your own
+certificate if Firefox is your development browser.
 
 ### Skipping the download entirely
 

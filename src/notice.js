@@ -69,6 +69,8 @@ function loadDistributionWarning () {
  */
 const WARNED = Symbol.for('backloop.dev.distributionWarningShown');
 
+const { PUBLIC_INSTALL_URL } = require('./secret');
+
 /**
  * Says, once, whatever the published build wants said about how it was
  * obtained. Nothing at all when the module is absent, and nothing when
@@ -110,10 +112,63 @@ function showNotice (pack) {
   console.log('');
 }
 
+// Once per process. It is important, not urgent: repeating it on every reload
+// of a dev server would train people to scroll past it.
+let publicWarningShown = false;
+
+/**
+ * Says that the certificate in use is the shared, self-signed one.
+ *
+ * Anyone running on it will meet a browser warning until they install it, and
+ * the useful thing to tell them is where the instructions are. Saying nothing
+ * would be the real failure: they would see the browser complain and have no
+ * idea which of their own changes caused it.
+ *
+ * @param {object} pack - a parsed pack.json
+ */
+function showPublicWarning (pack) {
+  if (publicWarningShown || pack?.public !== true) return;
+  publicWarningShown = true;
+
+  console.log('');
+  console.log('  ┌ backloop.dev is using the public certificate');
+  console.log('  │');
+  console.log('  │ It is self-signed and shared by everyone, so browsers reject it');
+  console.log('  │ until you install it once on this machine. How to do that:');
+  console.log('  │');
+  console.log('  │   ' + PUBLIC_INSTALL_URL);
+  console.log('  │');
+  console.log('  │ Already have your own certificate? Point BACKLOOP_DEV_CERT and');
+  console.log('  │ BACKLOOP_DEV_KEY at it and this message goes away.');
+  console.log('  └');
+  console.log('');
+}
+
+/**
+ * Says, quietly, which certificate is being used when it came from the user.
+ * One line: they configured it, so they are not surprised, but a mismatch
+ * between what they meant and what was found is worth being able to see.
+ *
+ * @param {object} pack - a parsed pack.json
+ */
+function showLocalCertNotice (pack) {
+  if (pack?.local !== true) return;
+  console.log(`backloop.dev: using the certificate from ${pack.localSource}, expires ${pack.info.notAfter.slice(0, 10)}`);
+}
+
 /** Tests need to forget what has already been shown. */
 function resetNotice () {
   lastShown = null;
+  publicWarningShown = false;
   delete globalThis[WARNED];
 }
 
-module.exports = { readNotice, showNotice, showDistributionWarning, resetNotice, WARNED };
+module.exports = {
+  readNotice,
+  showNotice,
+  showDistributionWarning,
+  showPublicWarning,
+  showLocalCertNotice,
+  resetNotice,
+  WARNED
+};

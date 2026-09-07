@@ -6,10 +6,11 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const {
-  resolveSecret, packUrl, certsPath, savedSecretPath, canPrompt, promptForSecret, saveSecret,
-  SECRET_PATTERN, MissingSecretError, ASK_THE_ADMIN
+  resolveSecret, packUrl, publicPackUrl, certsPath, savedSecretPath, canPrompt, promptForSecret,
+  saveSecret, SECRET_PATTERN, MissingSecretError, ASK_THE_ADMIN
 } = require('./secret');
-const { showNotice, showDistributionWarning } = require('./notice');
+const { showNotice, showDistributionWarning, showPublicWarning, showLocalCertNotice } = require('./notice');
+const { loadLocalCert } = require('./localcert');
 
 const versionNum = 1;
 
@@ -32,7 +33,21 @@ const packPath = path.resolve(certsPath, 'pack.json');
  *   when none is configured. Off by default, because a prompt nobody can see is
  *   a hang: only callers that know a person is waiting should turn it on.
  */
-async function updateAndLoad (force = false, { secret, interactive = false } = {}) {
+async function updateAndLoad (force = false, { secret, interactive = false, cert, key, ca } = {}) {
+  // A certificate the user supplied wins over everything: it needs no network,
+  // no secret, and no cache, and choosing anything else would silently serve
+  // something other than the file they named.
+  const local = loadLocalCert({ cert, key, ca });
+  if (local != null) {
+    showDistributionWarning();
+    showLocalCertNotice(local);
+    local.expirationDays = expirationDays(local.info.notAfter);
+    if (local.expirationDays < 0) {
+      console.log(`backloop.dev: the certificate from ${local.localSource} expired ${-local.expirationDays} days ago`);
+    }
+    return local;
+  }
+
   const actual = loadFromLocalDirectory(' Auto updating ');
 
   if (actual?.version?.num != null) {
@@ -45,6 +60,7 @@ async function updateAndLoad (force = false, { secret, interactive = false } = {
   if (!force) {
     if (actual != null && actual.expirationDays > 0) {
       showDistributionWarning();
+      showPublicWarning(actual);
       showNotice(actual);
       return actual;
     }
@@ -69,6 +85,7 @@ async function updateAndLoad (force = false, { secret, interactive = false } = {
   fs.writeFileSync(path.resolve(certsPath, 'pack.json'), JSON.stringify(res, null, 2));
 
   showDistributionWarning();
+  showPublicWarning(res);
   showNotice(res);
   console.log('Updated backloop.dev certificate, expires in ' + expDays + ' days');
   console.log(`Using ${certsPath} to store certificates files.`);
@@ -90,13 +107,16 @@ async function fetchPackWithSecret (explicit, interactive) {
   try {
     return await fetchPack(resolveSecret(explicit));
   } catch (err) {
-    // Only a *missing* secret is worth asking about. A configured one that is
-    // malformed or wrong is a problem to report, not to paper over.
-    if (!(err instanceof MissingSecretError) || !interactive || !canPrompt()) throw err;
+    // Only a *missing* secret is worth asking about, and only a missing one is
+    // worth falling back for. A configured secret that is malformed or wrong is
+    // a problem to report: quietly handing back a different certificate would
+    // send someone debugging their own code instead of their configuration.
+    if (!(err instanceof MissingSecretError)) throw err;
+    if (!interactive || !canPrompt()) return await fetchPublicPack();
   }
 
   const answer = await promptForSecret();
-  if (answer === '') throw new MissingSecretError();
+  if (answer === '') return await fetchPublicPack();
 
   if (!SECRET_PATTERN.test(answer)) {
     console.log('\n' + ASK_THE_ADMIN + '\n');
@@ -117,18 +137,39 @@ async function fetchPackWithSecret (explicit, interactive) {
 }
 
 /**
+ * The certificate for everyone who has no secret: shared, self-signed, and
+ * useless until installed, which is what the warning at start-up is for.
+ *
+ * @returns Promise<CertsPack>
+ */
+function fetchPublicPack () {
+  return get(publicPackUrl(), 'the public certificate');
+}
+
+/**
  * @param {string} secret - validated secret, the path segment the pack lives under
  * @returns Promise<CertsPack>
  */
 function fetchPack (secret) {
+  // The secret is a path segment, so a wrong one reads as a plain 404.
+  return get(packUrl(secret), 'the certificate pack',
+    'Certificate pack not found (HTTP 404). The secret is wrong, or it has been rotated.');
+}
+
+/**
+ * @param {string} url
+ * @param {string} what - named in the error, so a failure says which fetch failed
+ * @param {string} [notFound] - message for a 404, when there is a better one
+ * @returns Promise<CertsPack>
+ */
+function get (url, what, notFound) {
   return new Promise((resolve, reject) => {
-    https.get(packUrl(secret), function (res) {
-      // The secret is a path segment, so a wrong one reads as a plain 404.
+    https.get(url, function (res) {
       if (res.statusCode !== 200) {
         res.resume();
-        return reject(new Error(res.statusCode === 404
-          ? 'Certificate pack not found (HTTP 404). The secret is wrong, or it has been rotated.'
-          : `Unexpected HTTP ${res.statusCode} while downloading the certificate pack.`));
+        return reject(new Error(res.statusCode === 404 && notFound
+          ? notFound
+          : `Unexpected HTTP ${res.statusCode} while downloading ${what}.`));
       }
       let data = '';
       res.on('data', function (c) { data += c; });

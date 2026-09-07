@@ -22,11 +22,13 @@ Consequences for anything you do here:
   the whole `npm install`. Never treat it as current, and never describe it as a 404.
   The five individual certificate files beside it *are* gone (404). The live pack lives
   behind a path segment that requires a secret.
-- **Access is not open.** If a user does not have a secret, do not look for a way to
-  obtain one — there isn't one. Recommend [mkcert](https://github.com/FiloSottile/mkcert),
-  [Caddy's internal CA](https://caddyserver.com/docs/automatic-https#local-https) or
-  [vite-plugin-mkcert](https://github.com/liuweiGL/vite-plugin-mkcert) instead, and say
-  plainly that all three install a root into the trust store.
+- **Access to the secret is not open.** If a user does not have one, do not look for a
+  way to obtain one, because there isn't one. Point them at the two routes that need no
+  secret instead: a certificate of their own (`BACKLOOP_DEV_CERT` and `BACKLOOP_DEV_KEY`,
+  from [mkcert](https://github.com/FiloSottile/mkcert),
+  [Caddy](https://caddyserver.com/docs/automatic-https#local-https) or openssl), or the
+  public self-signed certificate the package now falls back to. Both are described under
+  "Where a certificate comes from" below.
 - **Never write a secret into this repository.** It is public. No default value, no test
   fixture, no CI variable, no example in a README. `backloop.dev.json` and
   `.backloop.dev.json` are gitignored; keep it that way.
@@ -61,7 +63,9 @@ exactly what version 4 code did when it handed the default export to
 - `httpsOptionsAsync(options?, cb)` — callback flavor of the same; `httpsOptionsAsync(cb)` still works.
 - `httpsOptions(): {key, cert, ca}` — sync; if the certificate is missing/expired it triggers an update and **exits the process** (works on next start). Avoid in long-running tooling. Takes no options, so it cannot carry a secret — use one of the other sources.
 
-`options` is `{ secret }`, overriding every configured source. Types are in `src/index.d.ts`.
+`options` is `{ secret, interactive, cert, key, ca }`. `secret` overrides every configured
+source; `cert` and `key` are paths and override everything including the secret, since a
+certificate that is already on disk needs no download. Types are in `src/index.d.ts`.
 
 ## The secret
 
@@ -84,7 +88,7 @@ explains every way to configure one.
 When none of those has a secret, `updateAndLoad` may ask at the terminal — once, not in
 a loop. An answer that downloads a pack is proven, so it is saved to `<certsPath>/secret`
 (mode 0600) and never asked for again; one that does not is not saved and prints
-`ASK_THE_ADMIN`. An empty answer prints `HOW_TO_CONFIGURE`.
+`ASK_THE_ADMIN`. An empty answer falls back to the public certificate.
 
 **Asking is off by default and guarded twice**, because a prompt nobody can see is a
 hang: `interactive` must be passed, *and* `canPrompt()` requires stdin and stdout to both
@@ -95,6 +99,62 @@ seen and `npm install` would hang.
 
 `BACKLOOP_DEV_CERTS_DIR` pointed at a directory that already holds a valid `pack.json`
 skips the download entirely, and needs no secret. This is the offline/sandboxed path.
+
+## Where a certificate comes from
+
+Four sources, tried in this order by `updateAndLoad`. Only one of them needs a secret,
+which is the whole point: the package is useful to a stranger again.
+
+| | Source | Module |
+|---|---|---|
+| 1 | A certificate the user supplied | `src/localcert.js` |
+| 2 | A pack already cached in `certsPath` | `src/check.js` |
+| 3 | A download from the secret path | `src/check.js` |
+| 4 | The public self-signed certificate | `src/check.js` |
+
+**A configured secret that fails must never fall back.** Only `MissingSecretError`, which
+means nothing is configured anywhere, reaches `fetchPublicPack()`. A malformed secret or a
+404 from a wrong one is an error and stays an error. Quietly substituting a different
+certificate would send someone debugging their own code instead of their configuration,
+and it would undo the reason `bin/update.js` reports a failed install rather than
+announcing success.
+
+### Bring your own certificate
+
+`src/localcert.js` turns a certificate and key into the pack shape, so nothing downstream
+has to know where a certificate came from. It never touches the network. Resolution order:
+`{ cert, key, ca }` passed to the API, then `BACKLOOP_DEV_CERT` / `_KEY` / `_CA`, then
+`"cert"` and `"key"` in `backloop.dev.json` or `~/.backloop.dev.json` (paths resolved
+against the config file, not `cwd`), then `cert.pem` + `key.pem` or `fullchain.pem` +
+`privkey.pem` in `certsPath`.
+
+Half a configuration is an error, not a silent skip, and so is a key that does not match
+its certificate. Both name the files involved: the alternative is a TLS handshake failing
+somewhere far from the cause. A local pack carries `local: true` and `localSource`, and
+`key1` holds the whole key with `key2` empty, since there is no reason to split a key that
+never leaves the machine.
+
+### The public certificate
+
+Shared, self-signed, published at `https://backloop.dev/public/` with its private key,
+built by `tools/build-public-pack.js` in the hub repository. No certificate authority
+issued it, so no authority can be obliged to revoke it, which is exactly what killed the
+old public service.
+
+It is a **leaf**, `CA:FALSE`, `serverAuth` only. Never publish a root: a root whose key is
+public would let anyone holding that key mint a certificate for *any* hostname for every
+person who installed it. As a leaf the worst case is impersonating `*.backloop.dev`
+origins, which already resolve to loopback. The generating tool refuses to write anything
+else, and that refusal must stay.
+
+The pack carries `public: true`, which is what `showPublicWarning()` keys off. The warning
+appears once per process and links to the install page, because a user who has not
+installed it will meet a browser warning and otherwise have no idea why.
+
+Measured on macOS 26 on 2026-09-07: a user-installed self-signed leaf is trusted by Safari
+and Chrome, **and Apple's 825-day ceiling does not apply to it** (a 3650-day certificate
+verifies and loads clean). Firefox uses its own store, will not accept a non-CA as an
+authority, and is a documented limitation rather than something to work around.
 
 ## The npm branch
 

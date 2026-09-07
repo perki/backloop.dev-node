@@ -1,5 +1,45 @@
 # Changelog
 
+## 5.1.0
+
+**The package works again without a secret.** Two new sources of certificate, both of
+which need nothing from anybody.
+
+### Bring your own certificate
+
+Point `BACKLOOP_DEV_CERT` and `BACKLOOP_DEV_KEY` at a certificate and key in PEM and
+nothing is downloaded at all. Also settable as `{ cert, key, ca }` passed to
+`httpsOptionsPromise()`, as `"cert"` and `"key"` in `backloop.dev.json` or
+`~/.backloop.dev.json` (relative paths resolve against the file, not the working
+directory), or simply as `cert.pem` + `key.pem` or `fullchain.pem` + `privkey.pem` left
+in `BACKLOOP_DEV_CERTS_DIR`.
+
+It works with anything that issues certificates: mkcert, Caddy, a company CA, openssl.
+Setting only one of the pair is an error, and so is a key that does not match its
+certificate. Both are reported naming the files that disagree, rather than left to
+surface as an unreadable TLS handshake failure later.
+
+This also replaces the hand-built `pack.json` that supplying your own certificate used
+to require.
+
+### The public certificate
+
+With no secret and no certificate of your own, the package now downloads a shared,
+self-signed certificate from `https://backloop.dev/public/` instead of failing. It is
+announced at start-up, once per process, with a link to the install instructions.
+
+Being self-signed is the point: no certificate authority issued it, so no authority can
+be obliged to revoke it, which is what ended the public service. The cost is that
+browsers reject it until it is installed once per machine, which
+<https://backloop.dev/public/> explains for macOS, Windows and Linux. It is a leaf and
+deliberately not a certificate authority, so it can never sign anything but
+`*.backloop.dev`. Firefox does not use the system trust store and will not take it.
+
+**A configured secret that fails still fails.** The fallback happens only when no secret
+is configured anywhere. A wrong or malformed secret is an error, because quietly serving
+a different certificate would send you debugging your own code instead of your
+configuration.
+
 ## 5.0.0
 
 **Breaking: importing the ESM entry no longer resolves the certificate.**

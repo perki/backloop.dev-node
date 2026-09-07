@@ -31,6 +31,21 @@ export interface BackloopOptions {
    * TTY. Defaults to true; set false for a service that starts unattended.
    */
   interactive?: boolean;
+
+  /**
+   * Path to a certificate in PEM format. Wins over every other source: nothing
+   * is downloaded and no secret is needed. Must be given together with `key`.
+   */
+  cert?: string;
+
+  /**
+   * Path to the private key for `cert`, in PEM format. A key that does not
+   * match the certificate is reported rather than left to fail at handshake.
+   */
+  key?: string;
+
+  /** Path to an optional chain in PEM format, for a certificate that has one. */
+  ca?: string;
 }
 
 /**
@@ -91,6 +106,14 @@ export function httpsOptionsAsync(options: BackloopOptions, done: HttpsOptionsCa
  * @example Passing the secret directly
  * ```js
  * const options = await httpsOptionsPromise({ secret: process.env.MY_SECRET });
+ * ```
+ *
+ * @example Using a certificate you already have
+ * ```js
+ * const options = await httpsOptionsPromise({
+ *   cert: '/path/to/cert.pem',
+ *   key: '/path/to/key.pem'
+ * });
  * ```
  */
 export function httpsOptionsPromise(options?: BackloopOptions): Promise<HttpsOptions>;

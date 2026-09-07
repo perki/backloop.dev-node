@@ -78,19 +78,28 @@ function projectDir () {
 }
 
 /**
- * @returns {string|null} the secret held in a JSON config file, if any
+ * The config file carries more than the secret now, so parsing is shared.
+ *
+ * @returns {object|null} the parsed config file, if it is readable
  */
-function readConfigFile (file) {
+function readConfigObject (file) {
   if (!fs.existsSync(file)) return null;
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf-8'));
-    const value = parsed?.secret;
-    return (typeof value === 'string' && value.length > 0) ? value : null;
+    return (parsed != null && typeof parsed === 'object') ? parsed : null;
   } catch (e) {
     // A malformed config file must not look the same as a missing one.
     console.error(`backloop.dev: ignoring ${file}: ${e.message}`);
     return null;
   }
+}
+
+/**
+ * @returns {string|null} the secret held in a JSON config file, if any
+ */
+function readConfigFile (file) {
+  const value = readConfigObject(file)?.secret;
+  return (typeof value === 'string' && value.length > 0) ? value : null;
 }
 
 /**
@@ -186,8 +195,24 @@ function promptForSecret () {
  * @returns {string} the URL the certificate pack is downloaded from
  */
 function packUrl (secret) {
-  const base = (process.env.BACKLOOP_DEV_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
-  return `${base}/${encodeURIComponent(secret)}/pack.json`;
+  return `${baseUrl()}/${encodeURIComponent(secret)}/pack.json`;
+}
+
+/**
+ * The shared, self-signed certificate anyone can use. It needs no secret, and
+ * it is trusted only where somebody installed it deliberately.
+ *
+ * @returns {string} the URL the public certificate pack is downloaded from
+ */
+function publicPackUrl () {
+  return `${baseUrl()}/public/pack.json`;
+}
+
+/** Where the install instructions for the public certificate live. */
+const PUBLIC_INSTALL_URL = 'https://backloop.dev/public/';
+
+function baseUrl () {
+  return (process.env.BACKLOOP_DEV_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
 }
 
 module.exports = {
@@ -197,6 +222,10 @@ module.exports = {
   promptForSecret,
   canPrompt,
   packUrl,
+  publicPackUrl,
+  PUBLIC_INSTALL_URL,
+  projectDir,
+  readConfigObject,
   certsPath,
   savedSecretPath,
   MissingSecretError,
