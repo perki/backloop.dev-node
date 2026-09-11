@@ -1,5 +1,26 @@
 # Changelog
 
+## 5.2.1
+
+**The proxy no longer takes the process down when a reply arrives late.** `backloop.dev-proxy`
+and every `"proxy"` route in a multi-host config share one handler, and its callbacks
+wrote to the client response without checking whether it had already been answered. When
+something in front of the proxy answered first, typically a deadline, the upstream reply
+that landed afterwards threw `ERR_HTTP_HEADERS_SENT` on a tick where nothing could catch
+it, and the process exited along with every other host it served. Reported in
+[#1](https://github.com/perki/backloop.dev-node/issues/1).
+
+- Every callback now catches what it throws, and checks that the response is still open
+  before writing to it.
+- A client that leaves, or a response answered by something else, now releases the
+  upstream request. Before, the request stayed in flight and held a socket, and those
+  abandoned requests were what produced the late replies.
+- An upstream that breaks off mid-body now cuts the client connection. Before, the client
+  waited on a body that would never end. Once the status line has gone, a cut connection
+  is the only way left to say a response is incomplete.
+- The `timeout` handler is gone. Nothing ever set a timeout, so it could not fire, and it
+  made the proxy look as if it had a deadline.
+
 ## 5.2.0
 
 **Fixes serving the wrong certificate after a secret is configured.** Running with no

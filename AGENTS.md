@@ -245,6 +245,13 @@ Multi-host config format (paths resolved relative to the config file):
 
 Keys with a trailing `/` are path prefixes on a hostname; longest prefix wins.
 
+The proxy and every `"proxy"` route share `createProxyHandler` in `src/webserver/proxy.js`.
+Its callbacks run on a later tick than the handler, where nothing catches, so a throw
+there stops the process and every host it serves (issue #1, fixed in 5.2.1). Every
+callback goes through `guarded()`, and nothing writes to the response without checking it
+is still open. **Keep it that way.** There is no upstream timeout; do not add a `timeout`
+listener without also setting one.
+
 ## Certificates: where and when
 
 - Certificates are **not bundled**. `postinstall` and the runtime fetch them from the

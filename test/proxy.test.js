@@ -196,3 +196,105 @@ describe('createProxyHandler with https backend', function () {
     assert.strictEqual(body.path, '/test');
   });
 });
+
+// -- createProxyHandler when the client, the upstream or something in front misbehaves
+// https://github.com/perki/backloop.dev-node/issues/1
+
+describe('createProxyHandler failure paths', function () {
+  const servers = [];
+
+  after(function () {
+    for (const server of servers) {
+      server.closeAllConnections();
+      server.close();
+    }
+  });
+
+  function listen (server) {
+    servers.push(server);
+    return new Promise(function (resolve) {
+      server.listen(0, function () { resolve(server.address().port); });
+    });
+  }
+
+  function delay (ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
+
+  // an upstream running `behave`, with `gaveUp` resolving if the proxy leaves before it answers
+  async function upstream (behave) {
+    let release;
+    const gaveUp = new Promise(function (resolve) { release = resolve; });
+    const port = await listen(http.createServer(function (req, res) {
+      res.on('close', function () { if (!res.writableFinished) release(true); });
+      behave(req, res);
+    }));
+    return { port, gaveUp };
+  }
+
+  // an http front for the handler; `deadlineMs` answers 504 first, as a deadline in front of it would
+  function frontFor (upstreamPort, deadlineMs) {
+    const handler = createProxyHandler(`http://localhost:${upstreamPort}`);
+    return listen(http.createServer(function (req, res) {
+      if (deadlineMs) {
+        setTimeout(function () {
+          if (!res.headersSent) {
+            res.statusCode = 504;
+            res.end('deadline');
+          }
+        }, deadlineMs);
+      }
+      handler(req, res);
+    }));
+  }
+
+  function get (port, onRequest) {
+    return new Promise(function (resolve) {
+      const req = http.get({ port, path: '/', agent: false }, function (res) {
+        let body = '';
+        res.on('data', function (chunk) { body += chunk; });
+        res.on('end', function () { resolve({ statusCode: res.statusCode, body }); });
+        res.on('error', function (e) { resolve({ error: e.code || e.message }); });
+        res.on('close', function () { if (!res.complete) resolve({ error: 'aborted' }); });
+      });
+      req.on('error', function (e) { resolve({ error: e.code || e.message }); });
+      if (onRequest) onRequest(req);
+    });
+  }
+
+  it('survives an upstream reply that lands after the response was answered', { timeout: 2000 }, async function () {
+    const up = await upstream(function (req, res) {
+      setTimeout(function () { if (!res.destroyed) res.end('late'); }, 200);
+    });
+    const res = await get(await frontFor(up.port, 50));
+    assert.strictEqual(res.statusCode, 504);
+    await delay(300); // past the moment the late reply would have landed
+    assert.strictEqual(await up.gaveUp, true);
+  });
+
+  it('releases the upstream request when the client goes away', { timeout: 2000 }, async function () {
+    const up = await upstream(function () { /* never answers */ });
+    const res = await get(await frontFor(up.port), function (req) {
+      setTimeout(function () { req.destroy(); }, 50);
+    });
+    assert.ok(res.error);
+    assert.strictEqual(await up.gaveUp, true);
+  });
+
+  it('cuts the client off when the upstream aborts mid-body', { timeout: 2000 }, async function () {
+    const up = await upstream(function (req, res) {
+      res.writeHead(200);
+      res.write('partial');
+      setTimeout(function () { req.socket.destroy(); }, 50);
+    });
+    const res = await get(await frontFor(up.port));
+    assert.ok(res.error, 'a truncated body must not end like a complete one');
+  });
+
+  it('answers 500 when the upstream hangs up before replying', { timeout: 2000 }, async function () {
+    const up = await upstream(function (req) { req.socket.destroy(); });
+    const res = await get(await frontFor(up.port));
+    assert.strictEqual(res.statusCode, 500);
+    assert.match(res.body, /socket hang up/);
+  });
+});

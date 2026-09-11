@@ -42,11 +42,37 @@ function createProxyHandler (targetUrl) {
   return function onRequest (clientReq, clientRes) {
     console.log('serve: ' + clientReq.url);
 
+    let upstreamRes = null;
+    let abandoned = false;
+
+    // Must never throw: it is called from callbacks that run on a later tick than this
+    // handler, where nothing catches, so a throw would stop the process and every host on it.
     function writeError (str) {
-      clientRes.statusCode = 500;
-      clientRes.write(str);
-      clientRes.end();
       console.log('failed: ' + clientReq.url + ' > ' + str);
+      try {
+        if (clientRes.writableEnded || clientRes.destroyed) return;
+        if (clientRes.headersSent) {
+          // too late for a status code: cutting the connection is the only signal left,
+          // and it keeps a truncated body from passing for a complete one
+          clientRes.destroy();
+          return;
+        }
+        clientRes.statusCode = 500;
+        clientRes.end(str);
+      } catch (e) {
+        console.log('failed: ' + clientReq.url + ' > ' + e.message);
+      }
+    }
+
+    // wraps a callback so that nothing it throws can reach the top level
+    function guarded (fn) {
+      return function (...args) {
+        try {
+          fn.apply(this, args);
+        } catch (e) {
+          writeError(e.message);
+        }
+      };
     }
 
     // adding forward proto for express-session or other services
@@ -65,18 +91,35 @@ function createProxyHandler (targetUrl) {
         rejectUnauthorized: false
       };
 
-      const proxy = requestFn(options, function (res) {
+      const proxy = requestFn(options, guarded(function (res) {
+        upstreamRes = res;
+        if (clientRes.headersSent || clientRes.writableEnded || clientRes.destroyed) {
+          // already answered, by an error or by whatever sits in front of this handler
+          res.resume();
+          return;
+        }
+        res.on('close', guarded(function () {
+          if (!res.complete) writeError('upstream response aborted');
+        }));
         clientRes.writeHead(res.statusCode, res.headers);
         res.pipe(clientRes, { end: true });
-      });
+      }));
 
-      proxy.on('error', function (e) {
+      proxy.on('error', guarded(function (e) {
+        if (abandoned) return; // we destroyed it ourselves
         writeError(e.message);
-      });
+      }));
 
-      proxy.on('timeout', function () {
-        writeError('timeout');
-      });
+      clientRes.on('error', guarded(function (e) {
+        console.log('failed: ' + clientReq.url + ' > ' + e.message);
+      }));
+
+      // the client left, or something else answered it: nobody is waiting for the upstream reply
+      clientRes.on('close', guarded(function () {
+        if (upstreamRes && upstreamRes.complete) return;
+        abandoned = true;
+        proxy.destroy();
+      }));
 
       clientReq.pipe(proxy, { end: true });
     } catch (e) {
